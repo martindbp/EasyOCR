@@ -121,17 +121,26 @@ def recognizer_predict(model, converter, test_loader, batch_max_length,\
             preds_prob = preds_prob/np.expand_dims(pred_norm, axis=-1)
             preds_prob = torch.from_numpy(preds_prob).float().to(device)
 
+            letter_prob_indices = None
+            preds_index = None
             if decoder == 'greedy':
                 # Select max probabilty (greedy decoding) then decode index to character
                 _, preds_index = preds_prob.max(2)
                 preds_index = preds_index.view(-1)
-                preds_str = converter.decode_greedy(preds_index.data.cpu().detach().numpy(), preds_size.data)
+                preds_str_indices = converter.decode_greedy(preds_index.data.cpu().detach().numpy(), preds_size.data)
+                preds_index = [preds_index]
+                preds_str  = [s for s, _ in preds_str_indices]
+                letter_prob_indices = [i for _, i in preds_str_indices]
             elif decoder == 'beamsearch':
                 k = preds_prob.cpu().detach().numpy()
                 preds_str = converter.decode_beamsearch(k, beamWidth=beamWidth)
+                letter_prob_indices = [None]*len(preds_str)
+                preds_index = [None]*len(preds_str)
             elif decoder == 'wordbeamsearch':
                 k = preds_prob.cpu().detach().numpy()
                 preds_str = converter.decode_wordbeamsearch(k, beamWidth=beamWidth)
+                letter_prob_indices = [None]*len(preds_str)
+                preds_index = [None]*len(preds_str)
 
             preds_prob = preds_prob.cpu().detach().numpy()
             values = preds_prob.max(axis=2)
@@ -144,9 +153,14 @@ def recognizer_predict(model, converter, test_loader, batch_max_length,\
                 else:
                     preds_max_prob.append(np.array([0]))
 
-            for pred, pred_max_prob in zip(preds_str, preds_max_prob):
+            for pred, pred_max_prob, letter_prob_idx, pred_idx in zip(preds_str, preds_max_prob, letter_prob_indices, preds_index):
                 confidence_score = custom_mean(pred_max_prob)
-                result.append([pred, confidence_score])
+                probs = None
+                if letter_prob_idx is not None:
+                    prob_indices = pred_idx[letter_prob_idx[0]].cpu()
+                    tmp = preds_prob[0][letter_prob_idx]
+                    prob_distributions = [tmp[i] for i, _ in enumerate(prob_indices)]
+                result.append([pred, confidence_score, prob_indices, np.array(prob_distributions)])
 
     return result
 
@@ -224,10 +238,10 @@ def get_text(character, imgH, imgW, recognizer, converter, image_list,\
         if i in low_confident_idx:
             pred2 = result2[low_confident_idx.index(i)]
             if pred1[1]>pred2[1]:
-                result.append( (box, pred1[0], pred1[1]) )
+                result.append( (box, pred1[0], *pred1[1:]) )
             else:
-                result.append( (box, pred2[0], pred2[1]) )
+                result.append( (box, pred2[0], *pred2[1:]) )
         else:
-            result.append( (box, pred1[0], pred1[1]) )
+            result.append( (box, pred1[0], *pred1[1:]) )
 
     return result

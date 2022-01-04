@@ -327,6 +327,7 @@ class CTCLabelConverter(object):
     def decode_greedy(self, text_index, length):
         """ convert text-index into text-label. """
         texts = []
+        all_indices = []
         index = 0
         for l in length:
             t = text_index[index:index + l]
@@ -337,8 +338,9 @@ class CTCLabelConverter(object):
             # Combine the two boolean array
             c = a & b
             # Gets the corresponding character according to the saved indexes
-            text = ''.join(np.array(self.character)[t[c.nonzero()]])
-            texts.append(text)
+            indices = c.nonzero()
+            text = ''.join(np.array(self.character)[t[indices]])
+            texts.append((text, indices))
             index += l
         return texts
 
